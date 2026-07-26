@@ -72,6 +72,7 @@ fun KeyboardView(
     state: KeyboardUiState,
     callbacks: KeyboardCallbacks,
     modifier: Modifier = Modifier,
+    inlineSuggestions: List<*> = listOf<Any>(),
     onCardPositioned: (left: Int, top: Int, right: Int, bottom: Int) -> Unit = { _: Int, _: Int, _: Int, _: Int -> },
 ) {
     val isShifted by viewModel.isShifted.collectAsStateWithLifecycle()
@@ -119,7 +120,12 @@ fun KeyboardView(
 
     SideEffect {
         callbacks.onT9RightCandidateWillBeSelected = { pinyin, textLength ->
-            t9Controller.onRightCandidateSelected(pinyin, textLength)
+            if (pinyin.isNullOrBlank()) {
+                // emoji/符号等无拼音注释的候选词：直接提交上屏，不走消耗算法
+                t9Controller.onRightCandidateSelectedByDirectCommit()
+            } else {
+                t9Controller.onRightCandidateSelected(pinyin, textLength)
+            }
             t9Controller.inputBuffer.isEmpty
         }
         callbacks.onT9ForceSendToRime = {
@@ -282,6 +288,7 @@ fun KeyboardView(
                         ToolbarButton.END -> ({ callbacks.onToolbarEditingAction?.invoke("end") })
                         ToolbarButton.FLOAT -> ({ callbacks.onFloatingModeChange?.invoke(!state.isFloatingMode) })
                         ToolbarButton.HANDWRITING_LOOKUP -> ({ isHandwritingLookup = !isHandwritingLookup })
+                        ToolbarButton.EDIT -> ({ viewModel.showOverlay(OverlayRoute.Edit) })
                     }
                     ToolbarAction(button, onClick)
                 },
@@ -352,7 +359,8 @@ fun KeyboardView(
                             callbacks.onAssociationSelect?.invoke(index)
                         }
                     },
-                )
+                ),
+                inlineSuggestions = inlineSuggestions,
             )
 
             val isMainKeyboard = page is KeyboardPage.Main
@@ -853,6 +861,24 @@ fun KeyboardView(
                         bottomPaddingDp = state.keyboardBottomPaddingDp,
                         modifier = Modifier.fillMaxWidth().fillMaxHeight()
                     )
+                    is OverlayRoute.Edit -> {
+                        val editAction: (String) -> Unit = { action ->
+                            when (action) {
+                                "delete" -> callbacks.onKeyPress("delete", false)
+                                "enter" -> callbacks.onKeyPress("enter", false)
+                                else -> callbacks.onToolbarEditingAction?.invoke(action)
+                            }
+                        }
+                        EditKeyboardLayout(
+                            onAction = editAction,
+                            onBack = { viewModel.closeOverlay() },
+                            backgroundColor = candidateBarBg,
+                            textColor = keyTextColor,
+                            accentColor = accentColor,
+                            bottomPaddingDp = state.keyboardBottomPaddingDp,
+                            modifier = Modifier.fillMaxWidth().fillMaxHeight()
+                        )
+                    }
                     is OverlayRoute.Emoji -> EmojiKeyboardLayout(
                         onEmojiSelect = { emoji ->
                             if (emoji == "delete") {
