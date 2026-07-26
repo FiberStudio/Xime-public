@@ -2206,10 +2206,18 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
                     calculatorEngine.clear()
                     updateCalculatorCandidates()
                     if (candState.isComposing) {
-                        val input = candState.inputText
-                        if (input.isNotEmpty()) {
+                        // 先让 Rime 处理 Enter 键（触发方案的 commit_raw_input 绑定），
+                        // 与 Trime 架构一致：由 Rime 引擎决定提交什么文本。
+                        val result = rimeEngine.processKeyAndGetResult(0xff0d, 0)
+                        val committed = result.committedText
+                        val textToCommit = if (committed.isNotEmpty()) {
+                            committed
+                        } else {
+                            candState.inputText
+                        }
+                        if (textToCommit.isNotEmpty()) {
                             withContext(Dispatchers.Main) {
-                                commitText(input)
+                                commitText(textToCommit)
                             }
                         }
                         rimeEngine.clearComposition()
